@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Stream Twitch Viewer</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            margin: 0;
+            background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #16213e 100%);
+            color: #e8e8f0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            background: linear-gradient(90deg, rgba(24, 24, 35, 0.95), rgba(30, 20, 60, 0.95));
+            backdrop-filter: blur(10px);
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(145, 70, 255, 0.3);
+            box-shadow: 0 4px 20px rgba(145, 70, 255, 0.1);
+        }
+        
+        .header h1 { 
+            background: linear-gradient(45deg, #9146ff, #c77dff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin: 0; 
+            font-size: 20px; 
+            font-weight: 600;
+            text-shadow: 0 2px 10px rgba(145, 70, 255, 0.3);
+        }
+        
+        .toggle-sidebar {
+            background: linear-gradient(45deg, #9146ff, #7c3aed);
+            border: none;
+            color: #fff;
+            padding: 10px 15px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(145, 70, 255, 0.3);
+        }
+        
+        .toggle-sidebar:hover {
+            background: linear-gradient(45deg, #7c3aed, #6d28d9);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(145, 70, 255, 0.4);
+        }
+        
+        .main {
+            flex: 1;
+            display: flex;
+            gap: 15px;
+            padding: 15px;
+            position: relative;
+        }
+        
+        .streams-container {
+            flex: 1;
+            display: grid;
+            gap: 12px;
+            background: transparent;
+            padding: 0;
+            transition: margin-right 0.3s ease;
+        }
+        
+        .stream-wrapper {
+            position: relative;
+            background: rgba(24, 24, 35, 0.6);
+            border: 1px solid rgba(145, 70, 255, 0.2);
+            border-radius: 16px;
+            overflow: hidden;
+            min-height: 300px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+        }
+        
+        .stream-wrapper:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 35px rgba(145, 70, 255, 0.2);
+            border-color: rgba(145, 70, 255, 0.4);
+        }
+        
+        .stream-wrapper iframe { 
+            width: 100%; 
+            height: 100%; 
+            border: none; 
+            border-radius: 16px;
+        }
+        
+        .highlighted {
+            grid-column: span 2;
+            grid-row: span 2;
+            border: 2px solid #9146ff;
+            box-shadow: 0 0 30px rgba(145, 70, 255, 0.5);
+            z-index: 10;
+            transform: scale(1.02);
+        }
+        
+        .hidden-stream {
+            display: none !important;
+        }
+        
+        .sidebar {
+            width: 280px;
+            background: rgba(24, 24, 35, 0.8);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(145, 70, 255, 0.2);
+            border-radius: 20px;
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            right: 15px;
+            top: 15px;
+            bottom: 15px;
+            transform: translateX(0);
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+        
+        .sidebar.collapsed {
+            transform: translateX(100%);
+            width: 50px;
+            padding: 10px;
+            border-radius: 20px 0 0 20px;
+            right: 0;
+        }
+        
+        .sidebar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(145, 70, 255, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar.collapsed .sidebar-header {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+            justify-content: center;
+        }
+        
+        .sidebar h3 {
+            margin: 0;
+            color: #c77dff;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar.collapsed h3 {
+            opacity: 0;
+            visibility: hidden;
+            width: 0;
+            overflow: hidden;
+        }
+        
+        .sidebar-toggle {
+            background: rgba(70, 70, 105, 0.8);
+            border: none;
+            color: #fff;
+            padding: 8px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+            min-width: 35px;
+            flex-shrink: 0;
+            position: relative;
+        }
+        
+        .sidebar.collapsed .sidebar-toggle {
+            position: absolute;
+            left: -45px;
+            top: 50%;
+            transform: translateY(-50%);
+            border-radius: 8px 0 0 8px;
+            box-shadow: -5px 0 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        .sidebar-toggle:hover {
+            background: linear-gradient(45deg, #9146ff, #7c3aed);
+            transform: scale(1.1);
+        }
+        
+        .sidebar.collapsed .sidebar-toggle:hover {
+            transform: translateY(-50%) scale(1.1);
+        }
+        
+        .sidebar-content {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar.collapsed .sidebar-content {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            width: 0;
+            overflow: hidden;
+        }
+        
+        .sidebar-controls {
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .sidebar-controls input {
+            padding: 12px 16px;
+            background: rgba(14, 14, 16, 0.8);
+            border: 1px solid rgba(145, 70, 255, 0.3);
+            color: #e8e8f0;
+            border-radius: 12px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+        }
+        
+        .sidebar-controls input:focus {
+            outline: none;
+            border-color: #9146ff;
+            box-shadow: 0 0 0 3px rgba(145, 70, 255, 0.2);
+            transform: translateY(-1px);
+        }
+        
+        .sidebar-controls input::placeholder {
+            color: rgba(232, 232, 240, 0.6);
+        }
+        
+        .btn {
+            padding: 12px 20px;
+            background: linear-gradient(45deg, #9146ff, #7c3aed);
+            border: none;
+            color: #fff;
+            cursor: pointer;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(145, 70, 255, 0.3);
+        }
+        
+        .btn:hover {
+            background: linear-gradient(45deg, #7c3aed, #6d28d9);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(145, 70, 255, 0.4);
+        }
+        
+        .stream-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 12px 15px;
+            background: rgba(14, 14, 16, 0.6);
+            border-radius: 12px;
+            border: 1px solid rgba(145, 70, 255, 0.2);
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+        }
+        
+        .stream-item:hover {
+            background: rgba(145, 70, 255, 0.1);
+            border-color: rgba(145, 70, 255, 0.4);
+            transform: translateX(5px);
+        }
+        
+        .stream-item span { 
+            font-size: 14px; 
+            font-weight: 600;
+            color: #e8e8f0;
+        }
+        
+        .sidebar button {
+            margin-left: 4px;
+            padding: 6px 8px;
+            font-size: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            border: none;
+            background: rgba(70, 70, 105, 0.8);
+            color: #fff;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+        }
+        
+        .sidebar button:hover {
+            background: linear-gradient(45deg, #9146ff, #7c3aed);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(145, 70, 255, 0.3);
+        }
+        
+        .notification {
+            position: fixed;
+            top: 90px; 
+            right: 30px;
+            background: linear-gradient(45deg, #9146ff, #7c3aed);
+            color: #fff;
+            padding: 15px 20px; 
+            border-radius: 12px;
+            display: none;
+            z-index: 1000;
+            box-shadow: 0 8px 25px rgba(145, 70, 255, 0.4);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            font-weight: 500;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        /* Scrollbar personnalisée */
+        .sidebar::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .sidebar::-webkit-scrollbar-track {
+            background: rgba(24, 24, 35, 0.5);
+            border-radius: 10px;
+        }
+        
+        .sidebar::-webkit-scrollbar-thumb {
+            background: linear-gradient(45deg, #9146ff, #7c3aed);
+            border-radius: 10px;
+        }
+        
+        .sidebar::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(45deg, #7c3aed, #6d28d9);
+        }
+        
+        /* Ajustement du conteneur des streams quand la sidebar est repliée */
+        .streams-container.sidebar-collapsed {
+            margin-right: 0;
+        }
+        
+        /* Bouton externe pour rouvrir la sidebar */
+        .sidebar-toggle-external {
+            position: fixed;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(70, 70, 105, 0.9);
+            border: none;
+            color: #fff;
+            padding: 12px 8px;
+            border-radius: 8px 0 0 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            box-shadow: -5px 0 15px rgba(0, 0, 0, 0.3);
+            z-index: 101;
+            display: none;
+        }
+        
+        .sidebar-toggle-external:hover {
+            background: linear-gradient(45deg, #9146ff, #7c3aed);
+            transform: translateY(-50%) translateX(-3px);
+        }
+        
+        .sidebar-toggle-external.visible {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔴 Multi-Stream Viewer</h1>
+        <button class="toggle-sidebar" onclick="toggleSidebar()">📋 Panneau</button>
+    </div>
+
+    <div class="main">
+        <div class="streams-container" id="streamsContainer"></div>
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h3>🎮 Streams actifs</h3>
+                <button class="sidebar-toggle" onclick="toggleSidebar()" title="Replier/Déplier">◀</button>
+            </div>
+            <div class="sidebar-content">
+                <div class="sidebar-controls">
+                    <input type="text" id="streamInput" placeholder="Nom du streamer..." onkeypress="handleKeyPress(event)">
+                    <button class="btn" onclick="addStreamFromInput()">Ajouter</button>
+                </div>
+                <div id="streamList"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="notification" id="notification"></div>
+
+    <script>
+        class MultiStreamViewer {
+            constructor() {
+                this.streams = new Map();
+                this.highlighted = null;
+                this.audioStream = null;
+                this.counter = 0;
+                this.sidebarCollapsed = false;
+            }
+
+            addStream(username) {
+                username = username.trim().toLowerCase();
+                if (!username || this.streams.has(username)) {
+                    if (this.streams.has(username)) {
+                        this.showNotification(`${username} est déjà ajouté`);
+                    }
+                    return;
+                }
+
+                const id = `stream-${this.counter++}`;
+                this.streams.set(username, { id, username, hidden: false });
+                this.createStreamElement(username, id);
+                this.updateLayout();
+                this.updateSidebar();
+                this.showNotification(`✅ Ajouté : ${username}`);
+            }
+
+            createStreamElement(username, id) {
+                const container = document.getElementById("streamsContainer");
+                const wrapper = document.createElement("div");
+                wrapper.className = "stream-wrapper";
+                wrapper.id = id;
+                
+                const parent = window.location.hostname || window.location.host || 'localhost';
+                const src = `https://player.twitch.tv/?channel=${username}&parent=${parent}&muted=true`;
+                
+                wrapper.innerHTML = `<iframe src="${src}" allowfullscreen></iframe>`;
+                container.appendChild(wrapper);
+            }
+
+            removeStream(username) {
+                const data = this.streams.get(username);
+                if (!data) return;
+                document.getElementById(data.id).remove();
+                this.streams.delete(username);
+                if (this.highlighted === username) this.highlighted = null;
+                if (this.audioStream === username) this.audioStream = null;
+                this.updateLayout();
+                this.updateSidebar();
+                this.showNotification(`🗑️ Supprimé : ${username}`);
+            }
+
+            highlightStream(username) {
+                if (this.highlighted === username) {
+                    document.getElementById(this.streams.get(username).id).classList.remove("highlighted");
+                    this.highlighted = null;
+                } else {
+                    if (this.highlighted) {
+                        document.getElementById(this.streams.get(this.highlighted).id).classList.remove("highlighted");
+                    }
+                    document.getElementById(this.streams.get(username).id).classList.add("highlighted");
+                    this.highlighted = username;
+                }
+                this.updateLayout();
+                this.updateSidebar();
+            }
+
+            setAudioStream(username) {
+                const parent = window.location.hostname || window.location.host || 'localhost';
+                for (const [u, data] of this.streams.entries()) {
+                    const iframe = document.querySelector(`#${data.id} iframe`);
+                    if (iframe) {
+                        iframe.src = `https://player.twitch.tv/?channel=${u}&parent=${parent}&muted=${u !== username}`;
+                    }
+                }
+                this.audioStream = username;
+                this.updateSidebar();
+                this.showNotification(`🔊 Audio : ${username}`);
+            }
+
+            toggleVisibility(username) {
+                const data = this.streams.get(username);
+                if (!data) return;
+                const wrapper = document.getElementById(data.id);
+                data.hidden = !data.hidden;
+                if (data.hidden) {
+                    wrapper.classList.add("hidden-stream");
+                    this.showNotification(`👁️ ${username} masqué`);
+                } else {
+                    wrapper.classList.remove("hidden-stream");
+                    this.showNotification(`👁️ ${username} affiché`);
+                }
+                this.updateSidebar();
+                this.updateLayout();
+            }
+
+            updateLayout() {
+                const count = [...this.streams.values()].filter(s => !s.hidden).length;
+                const container = document.getElementById("streamsContainer");
+                if (count === 0) {
+                    container.style.gridTemplateColumns = "1fr";
+                    container.style.gridTemplateRows = "1fr";
+                    return;
+                }
+                const cols = Math.ceil(Math.sqrt(count));
+                const rows = Math.ceil(count / cols);
+                container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+                container.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+            }
+
+            updateSidebar() {
+                const list = document.getElementById("streamList");
+                list.innerHTML = "";
+                if (this.streams.size === 0) {
+                    list.innerHTML = "<p style='color: #999; text-align: center; font-style: italic;'>Aucun stream actif</p>";
+                    return;
+                }
+                
+                const sortedStreams = [...this.streams.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+                
+                for (const [username, data] of sortedStreams) {
+                    const div = document.createElement("div");
+                    div.className = "stream-item";
+                    div.innerHTML = `
+                        <span>${username}</span>
+                        <div>
+                            <button onclick="multi.setAudioStream('${username}')" title="Audio">${this.audioStream === username ? "🔊" : "🔇"}</button>
+                            <button onclick="multi.highlightStream('${username}')" title="Mettre en avant">${this.highlighted === username ? "⭐" : "🎯"}</button>
+                            <button onclick="multi.toggleVisibility('${username}')" title="Masquer/Afficher">${data.hidden ? "👁️" : "🚫"}</button>
+                            <button onclick="multi.removeStream('${username}')" title="Supprimer">❌</button>
+                        </div>
+                    `;
+                    list.appendChild(div);
+                }
+            }
+
+            showNotification(msg) {
+                const notif = document.getElementById("notification");
+                notif.textContent = msg;
+                notif.style.display = "block";
+                setTimeout(() => notif.style.display = "none", 3000);
+            }
+        }
+
+        const multi = new MultiStreamViewer();
+        
+        function toggleSidebar() {
+            const sidebar = document.getElementById("sidebar");
+            const streamsContainer = document.getElementById("streamsContainer");
+            const toggleBtn = sidebar.querySelector(".sidebar-toggle");
+            let externalToggle = document.getElementById("externalToggle");
+            
+            multi.sidebarCollapsed = !multi.sidebarCollapsed;
+            
+            if (multi.sidebarCollapsed) {
+                sidebar.classList.add("collapsed");
+                streamsContainer.classList.add("sidebar-collapsed");
+                toggleBtn.innerHTML = "▶";
+                toggleBtn.title = "Ouvrir le panneau";
+                
+                // Créer le bouton externe si il n'existe pas
+                if (!externalToggle) {
+                    externalToggle = document.createElement("button");
+                    externalToggle.id = "externalToggle";
+                    externalToggle.className = "sidebar-toggle-external";
+                    externalToggle.innerHTML = "◀";
+                    externalToggle.title = "Ouvrir le panneau";
+                    externalToggle.onclick = toggleSidebar;
+                    document.body.appendChild(externalToggle);
+                }
+                
+                // Afficher le bouton externe après un délai
+                setTimeout(() => {
+                    externalToggle.classList.add("visible");
+                }, 300);
+                
+            } else {
+                sidebar.classList.remove("collapsed");
+                streamsContainer.classList.remove("sidebar-collapsed");
+                toggleBtn.innerHTML = "◀";
+                toggleBtn.title = "Fermer le panneau";
+                
+                // Masquer le bouton externe
+                if (externalToggle) {
+                    externalToggle.classList.remove("visible");
+                }
+            }
+        }
+        
+        function addStreamFromInput() {
+            const input = document.getElementById("streamInput");
+            if (input.value.trim()) {
+                multi.addStream(input.value);
+                input.value = "";
+            }
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                addStreamFromInput();
+            }
+        }
+
+        window.onload = function() {
+            document.getElementById("streamInput").focus();
+            
+        };
+    </script>
+</body>
+</html>
